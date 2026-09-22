@@ -21,6 +21,67 @@ datasource db {
 }
 
 // ──────────────────────────────────────────────
+// Enums
+// ──────────────────────────────────────────────
+
+enum CaseStatus {
+  OPEN
+  IN_PROGRESS
+  ON_HOLD
+  RESOLVED
+  CLOSED
+}
+
+enum CasePriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum CaseSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum CaseConfidentiality {
+  INTERNAL
+  CONFIDENTIAL
+  RESTRICTED
+}
+
+enum CaseType {
+  CYBERSECURITY_INCIDENT
+  DIGITAL_FORENSICS
+  DATA_BREACH
+  MALWARE
+  PHISHING
+  INSIDER_THREAT
+  UNAUTHORIZED_ACCESS
+  OTHER
+}
+
+enum CaseCategory {
+  EMAIL_SECURITY
+  ENDPOINT_SECURITY
+  NETWORK_SECURITY
+  IDENTITY_ACCESS
+  DATA_SECURITY
+  MALWARE
+  SOCIAL_ENGINEERING
+  OTHER
+}
+
+enum CaseMemberRole {
+  LEAD_INVESTIGATOR
+  INVESTIGATOR
+  ANALYST
+  VIEWER
+}
+
+// ──────────────────────────────────────────────
 // Role
 // ──────────────────────────────────────────────
 // Defines the access level a user has in the system.
@@ -60,7 +121,106 @@ model User {
   roleId String @map("role_id") @db.Uuid
   role   Role   @relation(fields: [roleId], references: [id])
 
+  // Case Relationships
+  createdCases      Case[]              @relation("CaseCreatedBy")
+  leadCases         Case[]              @relation("CaseLeadInvestigator")
+  closedCases       Case[]              @relation("CaseClosedBy")
+  caseMemberships   CaseMember[]
+  caseStatusChanges CaseStatusHistory[]
+
   @@index([email])
   @@index([roleId])
   @@map("users")
+}
+
+// ──────────────────────────────────────────────
+// Case
+// ──────────────────────────────────────────────
+// The central container for an investigation.
+model Case {
+  id                 String              @id @default(uuid()) @db.Uuid
+  caseNumber         String              @unique @map("case_number") @db.VarChar(50)
+  title              String              @db.VarChar(255)
+  description        String?             @db.Text
+  caseType           CaseType            @default(CYBERSECURITY_INCIDENT) @map("case_type")
+  category           CaseCategory        @default(OTHER)
+  severity           CaseSeverity        @default(MEDIUM)
+  priority           CasePriority        @default(MEDIUM)
+  confidentiality    CaseConfidentiality @default(INTERNAL)
+  status             CaseStatus          @default(OPEN)
+
+  // Timeline
+  incidentDate       DateTime?           @map("incident_date")
+  detectedAt         DateTime?           @map("detected_at")
+  reportedAt         DateTime?           @map("reported_at")
+  dueDate            DateTime?           @map("due_date")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  closedAt           DateTime?           @map("closed_at")
+
+  // Ownership & Assignments
+  createdById        String              @map("created_by_id") @db.Uuid
+  createdBy          User                @relation("CaseCreatedBy", fields: [createdById], references: [id])
+  leadInvestigatorId String?             @map("lead_investigator_id") @db.Uuid
+  leadInvestigator   User?               @relation("CaseLeadInvestigator", fields: [leadInvestigatorId], references: [id])
+  closedById         String?             @map("closed_by_id") @db.Uuid
+  closedBy           User?               @relation("CaseClosedBy", fields: [closedById], references: [id])
+
+  // Organization & Audit
+  tags               String[]            @default([])
+  closureReason      String?             @map("closure_reason") @db.Text
+
+  // Sub-models
+  members            CaseMember[]
+  statusHistory      CaseStatusHistory[]
+
+  @@index([status])
+  @@index([priority])
+  @@index([severity])
+  @@index([caseType])
+  @@index([category])
+  @@index([createdById])
+  @@index([leadInvestigatorId])
+  @@index([createdAt])
+  @@map("cases")
+}
+
+// ──────────────────────────────────────────────
+// CaseMember
+// ──────────────────────────────────────────────
+// Connects Case and User with an investigation-specific member role.
+model CaseMember {
+  id        String         @id @default(uuid()) @db.Uuid
+  caseId    String         @map("case_id") @db.Uuid
+  case      Case           @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  userId    String         @map("user_id") @db.Uuid
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      CaseMemberRole @default(INVESTIGATOR)
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  @@unique([caseId, userId])
+  @@index([caseId])
+  @@index([userId])
+  @@map("case_members")
+}
+
+// ──────────────────────────────────────────────
+// CaseStatusHistory
+// ──────────────────────────────────────────────
+// Immutable audit record of case status transitions.
+model CaseStatusHistory {
+  id             String      @id @default(uuid()) @db.Uuid
+  caseId         String      @map("case_id") @db.Uuid
+  case           Case        @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  previousStatus CaseStatus? @map("previous_status")
+  newStatus      CaseStatus  @map("new_status")
+  changedById    String      @map("changed_by_id") @db.Uuid
+  changedBy      User        @relation(fields: [changedById], references: [id])
+  reason         String?     @db.Text
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  @@index([caseId])
+  @@index([changedById])
+  @@index([createdAt])
+  @@map("case_status_history")
 }

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import healthRoutes from './health.routes';
 import authRoutes from './auth.routes';
 import rbacRoutes from './rbac.routes';
+import caseRoutes from './case.routes';
 
 /**
  * Main router — mounts all route groups.
@@ -14,5 +15,6 @@ const router = Router();
 router.use('/health', healthRoutes);
 router.use('/auth', authRoutes);
 router.use('/rbac', rbacRoutes);
+router.use('/cases', caseRoutes);
 
 export default router;
