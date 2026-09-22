@@ -7,10 +7,11 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "test": "tsx test/auth.test.ts && tsx test/rbac.test.ts && tsx test/case.test.ts",
+    "test": "tsx test/auth.test.ts && tsx test/rbac.test.ts && tsx test/case.test.ts && tsx test/incident.test.ts",
     "test:auth": "tsx test/auth.test.ts",
     "test:rbac": "tsx test/rbac.test.ts",
-    "test:case": "tsx test/case.test.ts"
+    "test:case": "tsx test/case.test.ts",
+    "test:incident": "tsx test/incident.test.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

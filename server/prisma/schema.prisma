@@ -21,7 +21,7 @@ datasource db {
 }
 
 // ──────────────────────────────────────────────
-// Enums
+// Case Enums
 // ──────────────────────────────────────────────
 
 enum CaseStatus {
@@ -82,6 +82,68 @@ enum CaseMemberRole {
 }
 
 // ──────────────────────────────────────────────
+// Incident Enums
+// ──────────────────────────────────────────────
+
+enum IncidentStatus {
+  OPEN
+  INVESTIGATING
+  CONTAINED
+  RESOLVED
+  CLOSED
+}
+
+enum IncidentPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentType {
+  PHISHING
+  MALWARE
+  DATA_BREACH
+  UNAUTHORIZED_ACCESS
+  ACCOUNT_COMPROMISE
+  INSIDER_THREAT
+  NETWORK_ATTACK
+  ENDPOINT_COMPROMISE
+  SUSPICIOUS_ACTIVITY
+  OTHER
+}
+
+enum IncidentCategory {
+  EMAIL_SECURITY
+  IDENTITY_ACCESS
+  ENDPOINT_SECURITY
+  NETWORK_SECURITY
+  DATA_SECURITY
+  APPLICATION_SECURITY
+  CLOUD_SECURITY
+  OTHER
+}
+
+enum IncidentSource {
+  USER_REPORT
+  SOC_ALERT
+  SIEM
+  EDR
+  EMAIL
+  NETWORK_MONITORING
+  THREAT_INTELLIGENCE
+  MANUAL_INVESTIGATION
+  OTHER
+}
+
+// ──────────────────────────────────────────────
 // Role
 // ──────────────────────────────────────────────
 // Defines the access level a user has in the system.
@@ -122,11 +184,16 @@ model User {
   role   Role   @relation(fields: [roleId], references: [id])
 
   // Case Relationships
-  createdCases      Case[]              @relation("CaseCreatedBy")
-  leadCases         Case[]              @relation("CaseLeadInvestigator")
-  closedCases       Case[]              @relation("CaseClosedBy")
-  caseMemberships   CaseMember[]
-  caseStatusChanges CaseStatusHistory[]
+  createdCases          Case[]                  @relation("CaseCreatedBy")
+  leadCases             Case[]                  @relation("CaseLeadInvestigator")
+  closedCases           Case[]                  @relation("CaseClosedBy")
+  caseMemberships       CaseMember[]
+  caseStatusChanges     CaseStatusHistory[]
+
+  // Incident Relationships
+  createdIncidents      Incident[]              @relation("IncidentCreatedBy")
+  assignedIncidents     Incident[]              @relation("IncidentAssignedTo")
+  incidentStatusChanges IncidentStatusHistory[]
 
   @@index([email])
   @@index([roleId])
@@ -173,6 +240,7 @@ model Case {
   // Sub-models
   members            CaseMember[]
   statusHistory      CaseStatusHistory[]
+  incidents          Incident[]
 
   @@index([status])
   @@index([priority])
@@ -223,4 +291,74 @@ model CaseStatusHistory {
   @@index([changedById])
   @@index([createdAt])
   @@map("case_status_history")
+}
+
+// ──────────────────────────────────────────────
+// Incident
+// ──────────────────────────────────────────────
+// Represents a specific security event associated with a Case.
+model Incident {
+  id             String           @id @default(uuid()) @db.Uuid
+  incidentNumber String           @unique @map("incident_number") @db.VarChar(50)
+  caseId         String           @map("case_id") @db.Uuid
+  case           Case             @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  title          String           @db.VarChar(255)
+  description    String?          @db.Text
+  incidentType   IncidentType     @default(OTHER) @map("incident_type")
+  category       IncidentCategory @default(OTHER)
+  severity       IncidentSeverity @default(MEDIUM)
+  priority       IncidentPriority @default(MEDIUM)
+  status         IncidentStatus   @default(OPEN)
+  source         IncidentSource   @default(OTHER)
+
+  // Timeline
+  detectedAt     DateTime?        @map("detected_at")
+  occurredAt     DateTime?        @map("occurred_at")
+  reportedAt     DateTime?        @map("reported_at")
+  resolvedAt     DateTime?        @map("resolved_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  // Ownership & Assignments
+  createdById    String           @map("created_by_id") @db.Uuid
+  createdBy      User             @relation("IncidentCreatedBy", fields: [createdById], references: [id])
+  assignedToId   String?          @map("assigned_to_id") @db.Uuid
+  assignedTo     User?            @relation("IncidentAssignedTo", fields: [assignedToId], references: [id])
+
+  // Resolution Details
+  resolution     String?          @db.Text
+
+  // Sub-models
+  statusHistory  IncidentStatusHistory[]
+
+  @@index([caseId])
+  @@index([status])
+  @@index([severity])
+  @@index([priority])
+  @@index([incidentType])
+  @@index([category])
+  @@index([createdAt])
+  @@index([assignedToId])
+  @@map("incidents")
+}
+
+// ──────────────────────────────────────────────
+// IncidentStatusHistory
+// ──────────────────────────────────────────────
+// Immutable audit record of incident status transitions.
+model IncidentStatusHistory {
+  id             String          @id @default(uuid()) @db.Uuid
+  incidentId     String          @map("incident_id") @db.Uuid
+  incident       Incident        @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  previousStatus IncidentStatus? @map("previous_status")
+  newStatus      IncidentStatus  @map("new_status")
+  changedById    String          @map("changed_by_id") @db.Uuid
+  changedBy      User            @relation(fields: [changedById], references: [id])
+  reason         String?         @db.Text
+  createdAt      DateTime        @default(now()) @map("created_at")
+
+  @@index([incidentId])
+  @@index([changedById])
+  @@index([createdAt])
+  @@map("incident_status_history")
 }

@@ -3,6 +3,7 @@ import healthRoutes from './health.routes';
 import authRoutes from './auth.routes';
 import rbacRoutes from './rbac.routes';
 import caseRoutes from './case.routes';
+import incidentRoutes from './incident.routes';
 
 /**
  * Main router — mounts all route groups.
@@ -16,5 +17,6 @@ router.use('/health', healthRoutes);
 router.use('/auth', authRoutes);
 router.use('/rbac', rbacRoutes);
 router.use('/cases', caseRoutes);
+router.use('/incidents', incidentRoutes);
 
 export default router;
