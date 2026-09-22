@@ -15,8 +15,6 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
 
-    /* Module Resolution */
-    "moduleResolution": "node",
     "esModuleInterop": true,
     "resolveJsonModule": true,
 

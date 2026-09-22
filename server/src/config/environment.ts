@@ -1,9 +1,21 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 
-// Load .env file from the project root (one level above server/)
-// process.cwd() is the server/ directory when running `npm run dev`
-dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
+// Load .env file reliably whether running from project root, server/, or tests
+const possibleEnvPaths = [
+  path.resolve(process.cwd(), '../.env'),
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(__dirname, '../../../.env'),
+  path.resolve(__dirname, '../../.env'),
+];
+
+for (const envPath of possibleEnvPaths) {
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+    break;
+  }
+}
 
 /**
  * Centralized configuration.
@@ -19,6 +31,16 @@ const config = {
 
   /** PostgreSQL connection string */
   databaseUrl: process.env.DATABASE_URL || '',
+
+  /** JWT secret key used for signing and verifying tokens */
+  jwtSecret: process.env.JWT_SECRET || '',
+
+  /** JWT token expiration (e.g., '24h', '7d') */
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '24h',
 } as const;
+
+if (config.nodeEnv === 'production' && !config.jwtSecret) {
+  throw new Error('FATAL: JWT_SECRET environment variable is not defined.');
+}
 
 export default config;
