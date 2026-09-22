@@ -4,6 +4,7 @@ import authRoutes from './auth.routes';
 import rbacRoutes from './rbac.routes';
 import caseRoutes from './case.routes';
 import incidentRoutes from './incident.routes';
+import evidenceRoutes from './evidence.routes';
 
 /**
  * Main router — mounts all route groups.
@@ -18,5 +19,6 @@ router.use('/auth', authRoutes);
 router.use('/rbac', rbacRoutes);
 router.use('/cases', caseRoutes);
 router.use('/incidents', incidentRoutes);
+router.use('/evidence', evidenceRoutes);
 
 export default router;

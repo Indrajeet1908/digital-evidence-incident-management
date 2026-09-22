@@ -37,6 +37,12 @@ const config = {
 
   /** JWT token expiration (e.g., '24h', '7d') */
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '24h',
+
+  /** Maximum evidence file upload size in megabytes */
+  maxEvidenceFileSizeMb: parseInt(process.env.MAX_EVIDENCE_FILE_SIZE_MB || '100', 10),
+
+  /** Filesystem path for evidence storage (relative to project root or absolute) */
+  evidenceStoragePath: process.env.EVIDENCE_STORAGE_PATH || 'storage/evidence',
 } as const;
 
 if (config.nodeEnv === 'production' && !config.jwtSecret) {

@@ -195,6 +195,9 @@ model User {
   assignedIncidents     Incident[]              @relation("IncidentAssignedTo")
   incidentStatusChanges IncidentStatusHistory[]
 
+  // Evidence Relationships
+  uploadedEvidence      Evidence[]              @relation("EvidenceUploadedBy")
+
   @@index([email])
   @@index([roleId])
   @@map("users")
@@ -241,6 +244,7 @@ model Case {
   members            CaseMember[]
   statusHistory      CaseStatusHistory[]
   incidents          Incident[]
+  evidence           Evidence[]
 
   @@index([status])
   @@index([priority])
@@ -330,6 +334,7 @@ model Incident {
 
   // Sub-models
   statusHistory  IncidentStatusHistory[]
+  evidence       Evidence[]
 
   @@index([caseId])
   @@index([status])
@@ -362,3 +367,71 @@ model IncidentStatusHistory {
   @@index([createdAt])
   @@map("incident_status_history")
 }
+
+// ──────────────────────────────────────────────
+// Evidence Enums
+// ──────────────────────────────────────────────
+
+enum EvidenceType {
+  DOCUMENT
+  IMAGE
+  VIDEO
+  AUDIO
+  LOG
+  EMAIL
+  NETWORK_CAPTURE
+  MEMORY_DUMP
+  DISK_IMAGE
+  ARCHIVE
+  DATABASE_EXPORT
+  OTHER
+}
+
+enum EvidenceSource {
+  ENDPOINT
+  SERVER
+  NETWORK
+  EMAIL
+  CLOUD
+  USER_SUBMITTED
+  SECURITY_TOOL
+  FORENSIC_TOOL
+  EXTERNAL_MEDIA
+  OTHER
+}
+
+// ──────────────────────────────────────────────
+// Evidence
+// ──────────────────────────────────────────────
+// Represents a digital evidence file and its associated metadata.
+model Evidence {
+  id               String         @id @default(uuid()) @db.Uuid
+  evidenceNumber   String         @unique @map("evidence_number") @db.VarChar(50)
+  caseId           String         @map("case_id") @db.Uuid
+  case             Case           @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  incidentId       String?        @map("incident_id") @db.Uuid
+  incident         Incident?      @relation(fields: [incidentId], references: [id], onDelete: SetNull)
+  originalFilename String         @map("original_filename") @db.VarChar(255)
+  storedFilename   String         @map("stored_filename") @db.VarChar(255)
+  storagePath      String         @map("storage_path") @db.VarChar(500)
+  fileSize         BigInt         @map("file_size")
+  mimeType         String         @map("mime_type") @db.VarChar(100)
+  sha256           String         @db.VarChar(64)
+  evidenceType     EvidenceType   @map("evidence_type")
+  description      String?        @db.Text
+  source           EvidenceSource
+  collectedAt      DateTime?      @map("collected_at")
+  uploadedById     String         @map("uploaded_by_id") @db.Uuid
+  uploadedBy       User           @relation("EvidenceUploadedBy", fields: [uploadedById], references: [id])
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  @@index([caseId])
+  @@index([incidentId])
+  @@index([evidenceType])
+  @@index([sha256])
+  @@index([uploadedById])
+  @@index([createdAt])
+  @@map("evidence")
+}
+
