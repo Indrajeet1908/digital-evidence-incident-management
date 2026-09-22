@@ -6,6 +6,9 @@ import {
   listEvidenceQuerySchema,
 } from '../validators/evidence.validator';
 import { evidenceService } from '../services/evidence.service';
+import { EvidenceAuditAction } from '../types/custody.types';
+import { AuditContext } from '../services/custody.service';
+import { ROLES } from '../types/rbac.types';
 import { AppError } from '../utils/errors';
 import { z } from 'zod';
 
@@ -23,10 +26,20 @@ function safeCleanupUploadedFile(file?: Express.Multer.File): void {
   }
 }
 
+export function extractAuditContext(req: Request): AuditContext {
+  const forwarded = req.headers['x-forwarded-for'];
+  const firstForwarded =
+    typeof forwarded === 'string' ? forwarded.split(',')[0] : undefined;
+  const ipAddress = (firstForwarded ? firstForwarded.trim() : req.ip) || null;
+  const userAgent = (req.headers['user-agent'] as string) || null;
+  return { ipAddress, userAgent };
+}
+
 export class EvidenceController {
   /**
    * POST /api/evidence
-   * Ingests and stores an evidence file along with metadata.
+   * Ingests and stores an evidence file along with metadata,
+   * initializing the initial Chain of Custody (UPLOADED) and Audit Log.
    */
   async create(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -54,10 +67,12 @@ export class EvidenceController {
         return;
       }
 
+      const ctx = extractAuditContext(req);
       const created = await evidenceService.createEvidence(
         parseResult.data,
         req.file,
-        req.user.id
+        req.user.id,
+        ctx
       );
 
       res.status(201).json({
@@ -106,7 +121,8 @@ export class EvidenceController {
 
   /**
    * GET /api/evidence/:id
-   * Retrieves evidence metadata and associated case/incident details.
+   * Retrieves evidence metadata and associated case/incident details,
+   * logging a VIEWED audit record.
    */
   async getById(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -125,7 +141,12 @@ export class EvidenceController {
         return;
       }
 
-      const evidence = await evidenceService.getEvidenceById(paramResult.data);
+      const ctx = extractAuditContext(req);
+      const evidence = await evidenceService.getEvidenceById(
+        paramResult.data,
+        req.user.id,
+        ctx
+      );
       res.status(200).json({ evidence });
     } catch (error) {
       if (error instanceof AppError) {
@@ -139,6 +160,8 @@ export class EvidenceController {
   /**
    * GET /api/evidence/:id/download
    * Streams the physical evidence file with safe Content-Disposition headers.
+   * Enforces role check (ADMIN, INVESTIGATOR, ANALYST allowed; VIEWER denied 403)
+   * and records a DENIED audit log when unauthorized access is attempted.
    */
   async download(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -157,7 +180,29 @@ export class EvidenceController {
         return;
       }
 
-      const downloadInfo = await evidenceService.getEvidenceDownload(paramResult.data);
+      const ctx = extractAuditContext(req);
+
+      // Check RBAC for download: ADMIN, INVESTIGATOR, ANALYST allowed
+      const allowedDownloadRoles = [ROLES.ADMIN, ROLES.INVESTIGATOR, ROLES.ANALYST];
+      if (!allowedDownloadRoles.includes(req.user.role as (typeof allowedDownloadRoles)[number])) {
+        await evidenceService.recordDeniedAccess(
+          paramResult.data,
+          req.user.id,
+          EvidenceAuditAction.DOWNLOADED,
+          ctx
+        );
+        res.status(403).json({
+          error: 'Forbidden',
+          message: 'Access denied: insufficient permissions to download evidence',
+        });
+        return;
+      }
+
+      const downloadInfo = await evidenceService.getEvidenceDownload(
+        paramResult.data,
+        req.user.id,
+        ctx
+      );
 
       res.setHeader('Content-Type', downloadInfo.mimeType || 'application/octet-stream');
       res.setHeader('Content-Length', downloadInfo.fileSize);
@@ -177,7 +222,8 @@ export class EvidenceController {
 
   /**
    * GET /api/evidence/:id/integrity
-   * Validates whether the stored evidence file on disk matches its immutable SHA-256 hash.
+   * Validates whether the stored evidence file on disk matches its immutable SHA-256 hash
+   * and records an INTEGRITY_CHECKED audit entry.
    */
   async verifyIntegrity(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -196,7 +242,12 @@ export class EvidenceController {
         return;
       }
 
-      const integrity = await evidenceService.verifyIntegrity(paramResult.data);
+      const ctx = extractAuditContext(req);
+      const integrity = await evidenceService.verifyIntegrity(
+        paramResult.data,
+        req.user.id,
+        ctx
+      );
       res.status(200).json(integrity);
     } catch (error) {
       if (error instanceof AppError) {
@@ -209,7 +260,7 @@ export class EvidenceController {
 
   /**
    * PATCH /api/evidence/:id
-   * Updates mutable metadata for an evidence record.
+   * Updates mutable metadata for an evidence record and records a METADATA_UPDATED audit entry.
    */
   async update(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -237,9 +288,12 @@ export class EvidenceController {
         return;
       }
 
+      const ctx = extractAuditContext(req);
       const updated = await evidenceService.updateMetadata(
         paramResult.data,
-        bodyResult.data
+        bodyResult.data,
+        req.user.id,
+        ctx
       );
 
       res.status(200).json({

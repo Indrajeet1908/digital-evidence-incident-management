@@ -13,6 +13,12 @@ import {
   EvidenceResponse,
   EvidenceIntegrityResponse,
 } from '../types/evidence.types';
+import {
+  CustodyEventType,
+  EvidenceAuditAction,
+  AuditResult,
+} from '../types/custody.types';
+import { custodyService, AuditContext } from './custody.service';
 import { Prisma } from '@prisma/client';
 
 /**
@@ -87,12 +93,14 @@ export class EvidenceService {
   /**
    * Securely ingests and registers an uploaded evidence file.
    * Calculates streaming SHA-256 hash, links Case and optional Incident,
-   * stores metadata in PostgreSQL, and cleans up the stored file if insertion fails.
+   * stores metadata in PostgreSQL, initializes the initial Chain of Custody event (UPLOADED),
+   * records the initial Audit Log entry, and cleans up the stored file if insertion fails.
    */
   async createEvidence(
     input: CreateEvidenceInput,
     file: Express.Multer.File | undefined,
-    uploaderId: string
+    uploaderId: string,
+    ctx?: AuditContext
   ): Promise<EvidenceResponse> {
     if (!file) {
       throw new AppError('Evidence file is required', 400);
@@ -143,39 +151,72 @@ export class EvidenceService {
     // 4. Generate unique evidence number server-side
     const evidenceNumber = await generateEvidenceNumber();
 
-    // 5. Store evidence metadata in PostgreSQL with orphan file cleanup on failure
+    // 5. Transactionally create Evidence record, initial UPLOADED custody event, and initial audit log
     try {
-      const evidence = await prisma.evidence.create({
-        data: {
-          evidenceNumber,
-          caseId: input.caseId,
-          incidentId: input.incidentId ?? null,
-          originalFilename: sanitizedFilename,
-          storedFilename: file.filename,
-          storagePath: file.path,
-          fileSize: BigInt(file.size),
-          mimeType: file.mimetype || 'application/octet-stream',
-          sha256,
-          evidenceType: input.evidenceType,
-          description: input.description ?? null,
-          source: input.source,
-          collectedAt: input.collectedAt ?? null,
-          uploadedById: uploaderId,
-        },
-        include: {
-          case: {
-            select: { id: true, caseNumber: true, title: true, status: true },
+      const createdEvidence = await prisma.$transaction(async (tx) => {
+        const evidence = await tx.evidence.create({
+          data: {
+            evidenceNumber,
+            caseId: input.caseId,
+            incidentId: input.incidentId ?? null,
+            originalFilename: sanitizedFilename,
+            storedFilename: file.filename,
+            storagePath: file.path,
+            fileSize: BigInt(file.size),
+            mimeType: file.mimetype || 'application/octet-stream',
+            sha256,
+            evidenceType: input.evidenceType,
+            description: input.description ?? null,
+            source: input.source,
+            collectedAt: input.collectedAt ?? null,
+            uploadedById: uploaderId,
           },
-          incident: {
-            select: { id: true, incidentNumber: true, title: true, status: true },
+          include: {
+            case: {
+              select: { id: true, caseNumber: true, title: true, status: true },
+            },
+            incident: {
+              select: { id: true, incidentNumber: true, title: true, status: true },
+            },
+            uploadedBy: {
+              select: { id: true, firstName: true, lastName: true, email: true },
+            },
           },
-          uploadedBy: {
-            select: { id: true, firstName: true, lastName: true, email: true },
+        });
+
+        // Initial Custody Event: UPLOADED
+        await custodyService.appendCustodyEvent(tx, {
+          evidenceId: evidence.id,
+          eventType: CustodyEventType.UPLOADED,
+          fromUserId: null,
+          toUserId: uploaderId,
+          actorUserId: uploaderId,
+          reason: 'Initial evidence ingestion and secure storage',
+          location: 'Digital Evidence Storage Repository',
+          eventAt: new Date(),
+        });
+
+        // Initial Audit Log: UPLOADED
+        await custodyService.appendAuditLog(tx, {
+          evidenceId: evidence.id,
+          actorUserId: uploaderId,
+          action: EvidenceAuditAction.UPLOADED,
+          result: AuditResult.SUCCESS,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          metadata: {
+            evidenceNumber: evidence.evidenceNumber,
+            originalFilename: sanitizedFilename,
+            fileSize: file.size,
+            mimeType: file.mimetype || 'application/octet-stream',
+            sha256,
           },
-        },
+        });
+
+        return evidence;
       });
 
-      return formatEvidenceResponse(evidence);
+      return formatEvidenceResponse(createdEvidence);
     } catch (dbErr) {
       safeDeleteFile(file.path);
       throw dbErr;
@@ -250,9 +291,13 @@ export class EvidenceService {
   }
 
   /**
-   * Retrieves full evidence metadata by ID.
+   * Retrieves full evidence metadata by ID and records a VIEWED audit log.
    */
-  async getEvidenceById(id: string): Promise<EvidenceResponse> {
+  async getEvidenceById(
+    id: string,
+    actorId?: string,
+    ctx?: AuditContext
+  ): Promise<EvidenceResponse> {
     const evidence = await prisma.evidence.findUnique({
       where: { id },
       include: {
@@ -272,13 +317,29 @@ export class EvidenceService {
       throw new AppError('Evidence not found', 404);
     }
 
+    if (actorId) {
+      await custodyService.appendAuditLog(prisma, {
+        evidenceId: id,
+        actorUserId: actorId,
+        action: EvidenceAuditAction.VIEWED,
+        result: AuditResult.SUCCESS,
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+      });
+    }
+
     return formatEvidenceResponse(evidence);
   }
 
   /**
-   * Retrieves physical file metadata and verifies file presence on disk for secure download.
+   * Retrieves physical file metadata, verifies file presence on disk for secure download,
+   * and records a DOWNLOADED audit log.
    */
-  async getEvidenceDownload(id: string) {
+  async getEvidenceDownload(
+    id: string,
+    actorId?: string,
+    ctx?: AuditContext
+  ) {
     const evidence = await prisma.evidence.findUnique({
       where: { id },
       select: {
@@ -299,6 +360,21 @@ export class EvidenceService {
       throw new AppError('Evidence physical file is missing from storage', 500);
     }
 
+    if (actorId) {
+      await custodyService.appendAuditLog(prisma, {
+        evidenceId: id,
+        actorUserId: actorId,
+        action: EvidenceAuditAction.DOWNLOADED,
+        result: AuditResult.SUCCESS,
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        metadata: {
+          originalFilename: evidence.originalFilename,
+          fileSize: Number(evidence.fileSize),
+        },
+      });
+    }
+
     return {
       filePath: evidence.storagePath,
       originalFilename: evidence.originalFilename,
@@ -308,10 +384,43 @@ export class EvidenceService {
   }
 
   /**
-   * Performs on-demand SHA-256 integrity verification against the physical file on disk.
-   * Compares the live hash with the immutable database record.
+   * Records an audit log for an unauthorized/denied operation (e.g. VIEWER download attempt).
    */
-  async verifyIntegrity(id: string): Promise<EvidenceIntegrityResponse> {
+  async recordDeniedAccess(
+    evidenceId: string,
+    actorId: string,
+    action: EvidenceAuditAction,
+    ctx?: AuditContext
+  ): Promise<void> {
+    try {
+      const exists = await prisma.evidence.findUnique({
+        where: { id: evidenceId },
+        select: { id: true },
+      });
+      if (exists) {
+        await custodyService.appendAuditLog(prisma, {
+          evidenceId,
+          actorUserId: actorId,
+          action,
+          result: AuditResult.DENIED,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to record denied access audit log:', err);
+    }
+  }
+
+  /**
+   * Performs on-demand SHA-256 integrity verification against the physical file on disk
+   * and records an INTEGRITY_CHECKED audit log.
+   */
+  async verifyIntegrity(
+    id: string,
+    actorId?: string,
+    ctx?: AuditContext
+  ): Promise<EvidenceIntegrityResponse> {
     const evidence = await prisma.evidence.findUnique({
       where: { id },
       select: {
@@ -332,6 +441,22 @@ export class EvidenceService {
     const currentHash = await calculateFileSha256(evidence.storagePath);
     const matches = currentHash.toLowerCase() === evidence.sha256.toLowerCase();
 
+    if (actorId) {
+      await custodyService.appendAuditLog(prisma, {
+        evidenceId: id,
+        actorUserId: actorId,
+        action: EvidenceAuditAction.INTEGRITY_CHECKED,
+        result: AuditResult.SUCCESS,
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        metadata: {
+          integrity: matches ? 'VALID' : 'MISMATCH',
+          storedHash: evidence.sha256,
+          currentHash,
+        },
+      });
+    }
+
     return {
       evidenceId: evidence.id,
       storedHash: evidence.sha256,
@@ -341,11 +466,13 @@ export class EvidenceService {
   }
 
   /**
-   * Updates non-immutable evidence metadata (description, evidenceType, source, collectedAt).
+   * Updates non-immutable evidence metadata and records a METADATA_UPDATED audit log.
    */
   async updateMetadata(
     id: string,
-    input: UpdateEvidenceMetadataInput
+    input: UpdateEvidenceMetadataInput,
+    actorId?: string,
+    ctx?: AuditContext
   ): Promise<EvidenceResponse> {
     const existing = await prisma.evidence.findUnique({
       where: { id },
@@ -375,6 +502,20 @@ export class EvidenceService {
         },
       },
     });
+
+    if (actorId) {
+      await custodyService.appendAuditLog(prisma, {
+        evidenceId: id,
+        actorUserId: actorId,
+        action: EvidenceAuditAction.METADATA_UPDATED,
+        result: AuditResult.SUCCESS,
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        metadata: {
+          updatedFields: Object.keys(input),
+        },
+      });
+    }
 
     return formatEvidenceResponse(updated);
   }
