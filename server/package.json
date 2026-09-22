@@ -7,7 +7,9 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "test": "tsx test/auth.test.ts"
+    "test": "tsx test/auth.test.ts && tsx test/rbac.test.ts",
+    "test:auth": "tsx test/auth.test.ts",
+    "test:rbac": "tsx test/rbac.test.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
