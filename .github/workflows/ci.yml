@@ -61,7 +61,7 @@ jobs:
 
       - name: Deploy schema to CI test database
         working-directory: server
-        run: npx prisma db push --skip-generate
+        run: npx prisma db push
 
       - name: Seed test roles
         working-directory: server
