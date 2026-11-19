@@ -10,6 +10,7 @@ import { EvidenceAuditAction } from '../types/custody.types';
 import { AuditContext } from '../services/custody.service';
 import { ROLES } from '../types/rbac.types';
 import { AppError } from '../utils/errors';
+import { sanitizeHeaderFilename } from '../utils/security.utils';
 import { z } from 'zod';
 
 const uuidParamSchema = z.string().uuid('Invalid UUID identifier');
@@ -206,7 +207,8 @@ export class EvidenceController {
 
       res.setHeader('Content-Type', downloadInfo.mimeType || 'application/octet-stream');
       res.setHeader('Content-Length', downloadInfo.fileSize);
-      res.download(downloadInfo.filePath, downloadInfo.originalFilename, (err) => {
+      const safeFilename = sanitizeHeaderFilename(downloadInfo.originalFilename);
+      res.download(downloadInfo.filePath, safeFilename, (err) => {
         if (err && !res.headersSent) {
           next(err);
         }

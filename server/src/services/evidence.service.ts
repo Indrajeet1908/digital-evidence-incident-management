@@ -20,6 +20,11 @@ import {
 } from '../types/custody.types';
 import { custodyService, AuditContext } from './custody.service';
 import { Prisma } from '@prisma/client';
+import {
+  sanitizeOriginalFilename,
+  assertPathWithinDirectory,
+} from '../utils/security.utils';
+import { getEvidenceStorageDir } from '../middleware/upload.middleware';
 
 /**
  * Safely removes a file from disk if it exists, logging any cleanup errors.
@@ -106,8 +111,8 @@ export class EvidenceService {
       throw new AppError('Evidence file is required', 400);
     }
 
-    // Sanitize original filename (prevent path traversal characters in metadata)
-    const sanitizedFilename = path.basename(file.originalname).trim() || 'evidence.bin';
+    // Sanitize original filename (prevent path traversal, null bytes, and control chars)
+    const sanitizedFilename = sanitizeOriginalFilename(file.originalname);
 
     // 1. Verify Case exists
     const existingCase = await prisma.case.findUnique({
@@ -355,6 +360,9 @@ export class EvidenceService {
     if (!evidence) {
       throw new AppError('Evidence not found', 404);
     }
+
+    // Path traversal defense: Ensure stored physical path is strictly within storage directory
+    assertPathWithinDirectory(evidence.storagePath, getEvidenceStorageDir());
 
     if (!fs.existsSync(evidence.storagePath)) {
       throw new AppError('Evidence physical file is missing from storage', 500);

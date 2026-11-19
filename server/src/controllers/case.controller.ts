@@ -243,7 +243,8 @@ export class CaseController {
       const member = await caseService.addMember(
         idParam.data,
         parseResult.data,
-        req.user.id
+        req.user.id,
+        req.user.role
       );
 
       res.status(201).json({
@@ -288,7 +289,8 @@ export class CaseController {
       const result = await caseService.removeMember(
         caseIdParam.data,
         userIdParam.data,
-        req.user.id
+        req.user.id,
+        req.user.role
       );
 
       res.status(200).json(result);

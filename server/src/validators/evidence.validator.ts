@@ -68,7 +68,7 @@ export const listEvidenceQuerySchema = z.object({
   evidenceType: z.nativeEnum(EvidenceType).optional(),
   source: z.nativeEnum(EvidenceSource).optional(),
   uploadedById: z.string().uuid('UploadedBy ID must be a valid UUID').optional(),
-  search: z.string().trim().optional(),
+  search: z.string().trim().max(100, 'Search query must not exceed 100 characters').optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });

@@ -34,3 +34,16 @@ Thumbs.db
 
 # Docker volumes
 pgdata/
+
+
+# Local environment overrides and secrets
+.env.*
+!.env.example
+
+# Generated investigation reports
+/CASE-2026-0012-Investigation-Report.pdf
+/CASE-2026-0126-Final-Investigation-Report.pdf
+
+# Local evidence samples
+/server/demo-suspicious-email.txt
+/server/manual-evidence.txt

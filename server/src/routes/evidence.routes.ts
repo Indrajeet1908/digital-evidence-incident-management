@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { evidenceController } from '../controllers/evidence.controller';
 import { custodyController } from '../controllers/custody.controller';
+import { aiController } from '../controllers/ai.controller';
+import { reportController } from '../controllers/report.controller';
 import { authenticate } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
 import { uploadEvidenceFile } from '../middleware/upload.middleware';
@@ -190,5 +192,49 @@ router.get('/:id/audit/integrity', (req, res, next) => {
 router.get('/:id/audit', (req, res, next) => {
   custodyController.listAuditHistory(req, res, next);
 });
+
+// ──────────────────────────────────────────────
+// AI Analysis Endpoints (Milestone 9)
+// ──────────────────────────────────────────────
+
+/**
+ * POST /api/evidence/:id/ai/analyze
+ * Initiates controlled AI analysis on evidence artifact.
+ * Permitted: ADMIN, INVESTIGATOR, ANALYST
+ * Denied: VIEWER (403 Forbidden)
+ */
+router.post(
+  '/:id/ai/analyze',
+  requireRole(ROLES.ADMIN, ROLES.INVESTIGATOR, ROLES.ANALYST),
+  (req, res, next) => {
+    aiController.analyzeEvidence(req, res, next);
+  }
+);
+
+/**
+ * GET /api/evidence/:id/ai
+ * Lists AI analysis history for evidence record.
+ * Permitted: All authenticated roles (ADMIN, INVESTIGATOR, ANALYST, VIEWER)
+ */
+router.get('/:id/ai', (req, res, next) => {
+  aiController.listEvidenceAnalyses(req, res, next);
+});
+
+// ──────────────────────────────────────────────
+// Report Endpoints (Milestone 11)
+// ──────────────────────────────────────────────
+
+/**
+ * GET /api/evidence/:id/report
+ * Generate an evidence report preview.
+ * Permitted: ADMIN, INVESTIGATOR, ANALYST
+ */
+router.get(
+  '/:id/report',
+  requireRole(ROLES.ADMIN, ROLES.INVESTIGATOR, ROLES.ANALYST),
+  (req, res, next) => {
+    reportController.getEvidenceReport(req, res, next);
+  }
+);
 
 export default router;

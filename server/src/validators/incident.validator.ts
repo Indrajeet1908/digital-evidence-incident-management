@@ -140,7 +140,7 @@ export const listIncidentsQuerySchema = z
     incidentType: z.nativeEnum(IncidentType).optional(),
     category: z.nativeEnum(IncidentCategory).optional(),
     assignedToId: z.string().uuid().optional(),
-    search: z.string().trim().optional(),
+    search: z.string().trim().max(100, 'Search query must not exceed 100 characters').optional(),
     page: z.coerce.number().int().min(1).default(1),
     limit: z.coerce.number().int().min(1).max(100).default(20),
   });

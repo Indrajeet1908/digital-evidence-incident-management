@@ -441,7 +441,8 @@ export class CaseService {
   async addMember(
     caseId: string,
     input: AddCaseMemberInput,
-    _actingUserId: string
+    actingUserId?: string,
+    actingUserRole?: string
   ) {
     const existingCase = await prisma.case.findUnique({
       where: { id: caseId },
@@ -449,6 +450,18 @@ export class CaseService {
 
     if (!existingCase) {
       throw new AppError('Case not found', 404);
+    }
+
+    // IDOR / Authority Defense: Only ADMIN or the Case's designated Lead Investigator can manage roster
+    if (actingUserId) {
+      const isAdmin = actingUserRole === 'ADMIN';
+      const isLead = existingCase.leadInvestigatorId === actingUserId;
+      if (!isAdmin && !isLead) {
+        throw new AppError(
+          'Access denied: only the lead investigator or an administrator can modify case members',
+          403
+        );
+      }
     }
 
     const targetUser = await prisma.user.findUnique({
@@ -547,7 +560,8 @@ export class CaseService {
   async removeMember(
     caseId: string,
     targetUserId: string,
-    _actingUserId: string
+    actingUserId?: string,
+    actingUserRole?: string
   ) {
     const existingCase = await prisma.case.findUnique({
       where: { id: caseId },
@@ -555,6 +569,18 @@ export class CaseService {
 
     if (!existingCase) {
       throw new AppError('Case not found', 404);
+    }
+
+    // IDOR / Authority Defense: Only ADMIN or the Case's designated Lead Investigator can manage roster
+    if (actingUserId) {
+      const isAdmin = actingUserRole === 'ADMIN';
+      const isLead = existingCase.leadInvestigatorId === actingUserId;
+      if (!isAdmin && !isLead) {
+        throw new AppError(
+          'Access denied: only the lead investigator or an administrator can modify case members',
+          403
+        );
+      }
     }
 
     const membership = await prisma.caseMember.findUnique({

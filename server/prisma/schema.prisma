@@ -204,6 +204,9 @@ model User {
   custodyTransferredTo   EvidenceCustodyEvent[] @relation("CustodyToUser")
   auditActions           EvidenceAuditLog[]     @relation("AuditActorUser")
 
+  // AI Relationships (Milestone 9)
+  aiAnalysesCreated      AIAnalysis[]           @relation("AIAnalysisCreatedBy")
+
   @@index([email])
   @@index([roleId])
   @@map("users")
@@ -251,6 +254,7 @@ model Case {
   statusHistory      CaseStatusHistory[]
   incidents          Incident[]
   evidence           Evidence[]
+  aiAnalyses         AIAnalysis[]
 
   @@index([status])
   @@index([priority])
@@ -341,6 +345,7 @@ model Incident {
   // Sub-models
   statusHistory  IncidentStatusHistory[]
   evidence       Evidence[]
+  aiAnalyses     AIAnalysis[]
 
   @@index([caseId])
   @@index([status])
@@ -432,9 +437,10 @@ model Evidence {
   createdAt        DateTime       @default(now()) @map("created_at")
   updatedAt        DateTime       @updatedAt @map("updated_at")
 
-  // Custody & Audit Relationships
+  // Custody, Audit & AI Relationships
   custodyEvents    EvidenceCustodyEvent[]
   auditLogs        EvidenceAuditLog[]
+  aiAnalyses       AIAnalysis[]
 
   @@index([caseId])
   @@index([incidentId])
@@ -474,6 +480,9 @@ enum EvidenceAuditAction {
   SEALED
   UNSEALED
   RELEASED
+  AI_ANALYSIS_REQUESTED
+  AI_ANALYSIS_COMPLETED
+  AI_ANALYSIS_FAILED
   OTHER
 }
 
@@ -540,4 +549,58 @@ model EvidenceAuditLog {
   @@map("evidence_audit_logs")
 }
 
+// ──────────────────────────────────────────────
+// AI Analysis Enums (Milestone 9)
+// ──────────────────────────────────────────────
 
+enum AIAnalysisType {
+  EVIDENCE_SUMMARY
+  INCIDENT_CLASSIFICATION
+  IOC_EXTRACTION
+  THREAT_ANALYSIS
+  INVESTIGATION_SUMMARY
+}
+
+enum AIAnalysisStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// ──────────────────────────────────────────────
+// AIAnalysis Model (Milestone 9)
+// ──────────────────────────────────────────────
+// Records controlled, advisory AI analysis requests, inputs, and structured outputs.
+model AIAnalysis {
+  id           String           @id @default(uuid()) @db.Uuid
+  evidenceId   String?          @map("evidence_id") @db.Uuid
+  evidence     Evidence?        @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+  incidentId   String?          @map("incident_id") @db.Uuid
+  incident     Incident?        @relation(fields: [incidentId], references: [id], onDelete: SetNull)
+  caseId       String           @map("case_id") @db.Uuid
+  case         Case             @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  analysisType AIAnalysisType   @map("analysis_type")
+  provider     String           @db.VarChar(50)
+  model        String           @db.VarChar(100)
+  status       AIAnalysisStatus @default(PENDING)
+  inputHash    String           @map("input_hash") @db.VarChar(64)
+  result       Json?
+  summary      String?          @db.Text
+  confidence   Float?
+  createdById  String           @map("created_by_id") @db.Uuid
+  createdBy    User             @relation("AIAnalysisCreatedBy", fields: [createdById], references: [id])
+  createdAt    DateTime         @default(now()) @map("created_at")
+  completedAt  DateTime?        @map("completed_at")
+  errorMessage String?          @map("error_message") @db.Text
+
+  @@index([evidenceId])
+  @@index([incidentId])
+  @@index([caseId])
+  @@index([analysisType])
+  @@index([status])
+  @@index([inputHash])
+  @@index([createdAt])
+  @@index([createdById])
+  @@map("ai_analyses")
+}

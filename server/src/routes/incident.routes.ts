@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { incidentController } from '../controllers/incident.controller';
+import { aiController } from '../controllers/ai.controller';
+import { reportController } from '../controllers/report.controller';
 import { authenticate } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
 import { ROLES } from '../types/rbac.types';
@@ -65,6 +67,33 @@ router.patch(
   requireRole(ROLES.ADMIN, ROLES.INVESTIGATOR),
   (req, res, next) => {
     incidentController.changeStatus(req, res, next);
+  }
+);
+
+/**
+ * POST /api/incidents/:id/ai/classify
+ * Generates controlled, advisory AI classification for an incident.
+ * Permitted: ADMIN, INVESTIGATOR, ANALYST
+ * Denied: VIEWER (403 Forbidden)
+ */
+router.post(
+  '/:id/ai/classify',
+  requireRole(ROLES.ADMIN, ROLES.INVESTIGATOR, ROLES.ANALYST),
+  (req, res, next) => {
+    aiController.classifyIncident(req, res, next);
+  }
+);
+
+/**
+ * GET /api/incidents/:id/report
+ * Generate an incident report preview.
+ * Permitted: ADMIN, INVESTIGATOR, ANALYST
+ */
+router.get(
+  '/:id/report',
+  requireRole(ROLES.ADMIN, ROLES.INVESTIGATOR, ROLES.ANALYST),
+  (req, res, next) => {
+    reportController.getIncidentReport(req, res, next);
   }
 );
 

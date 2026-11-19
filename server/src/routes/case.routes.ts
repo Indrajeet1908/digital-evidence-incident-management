@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { caseController } from '../controllers/case.controller';
+import { reportController } from '../controllers/report.controller';
 import { authenticate } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
 import { ROLES } from '../types/rbac.types';
@@ -91,6 +92,19 @@ router.delete(
   requireRole(ROLES.ADMIN, ROLES.INVESTIGATOR),
   (req, res, next) => {
     caseController.removeMember(req, res, next);
+  }
+);
+
+/**
+ * GET /api/cases/:id/report
+ * Generate a detailed case report preview.
+ * Permitted: ADMIN, INVESTIGATOR, ANALYST
+ */
+router.get(
+  '/:id/report',
+  requireRole(ROLES.ADMIN, ROLES.INVESTIGATOR, ROLES.ANALYST),
+  (req, res, next) => {
+    reportController.getCaseReport(req, res, next);
   }
 );
 
